@@ -1629,6 +1629,7 @@ function AdminPartDetails() {
                 <dt>Shipping Policy</dt>
                 <dd>
                   {edit.shippingPolicy ? (
+                    <>
                     <InLineSelect
                       value={String(vm.shippingPolicyId ?? "")}
                       options={shippingPolicyOptions}
@@ -1643,6 +1644,7 @@ function AdminPartDetails() {
                         Verifying Shopify shipping collection and publication. This may take over a minute.
                       </small>
                     )}
+                    </>
                   ) : (
                     <>
                       {vm.shippingPolicyName || "—"}
