@@ -77,6 +77,7 @@ function AdminPartDetails() {
   const [part, setPart] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [shippingChangeInProgress, setShippingChangeInProgress] = useState(false);
   const [auditRefreshToken, setAuditRefreshToken] = useState(0);
   const [conditionOptions, setConditionOptions] = useState([]);
   const [shippingPolicyOptions, setShippingPolicyOptions] = useState([]);
@@ -501,6 +502,148 @@ function AdminPartDetails() {
         condition: false,
         shippingPolicy: false,
       });
+    }
+  };
+
+
+  // Shipping-only changes use the existing PATCH for unmapped/legacy parts.
+  // For products using Markets shipping, the dedicated guarded endpoint runs
+  // the proven DRAFT -> tag -> collection -> SQL -> publication sequence.
+  const changeShippingPolicy = async (selectedValue) => {
+    const targetPolicyId = Number(selectedValue);
+    const currentPolicyId = Number(vm.shippingPolicyId);
+    if (!Number.isInteger(targetPolicyId) || targetPolicyId <= 0) {
+      toastr.error("Select a valid shipping policy.");
+      return;
+    }
+    if (targetPolicyId === currentPolicyId) {
+      setEdit((e) => ({ ...e, shippingPolicy: false }));
+      return;
+    }
+    if (!part?.shopifyProductId) {
+      // A local-only part has no Shopify collection to migrate.
+      await patchAndRefresh({ shippingPolicyId: targetPolicyId });
+      return;
+    }
+    if (saveLockRef.current) return;
+    saveLockRef.current = true;
+    setSaving(true);
+    setShippingChangeInProgress(true);
+    let writeStarted = false;
+    try {
+      const preview = await partsService.getShippingReassignmentPlan(
+        vm.id,
+        targetPolicyId,
+      );
+      const plan = preview?.item;
+      if (!plan || plan.currentShippingPolicyId !== currentPolicyId ||
+          plan.targetShippingPolicyId !== targetPolicyId ||
+          plan.shopifyProductGid !==
+            `gid://shopify/Product/${part.shopifyProductId}`) {
+        throw new Error(
+          "The part changed since this page loaded. Refresh before changing its shipping policy.",
+        );
+      }
+
+      if (!plan.marketDrivenShipping) {
+        // Legacy delivery profiles retain their existing API behavior.
+        const response = await partsService.patchPart(
+          { shippingPolicyId: targetPolicyId },
+          vm.id,
+        );
+        writeStarted = true;
+        if (response?.item?.shopifySyncAttempted &&
+            !response.item.shopifySyncSucceeded) {
+          toastr.warning(
+            response.item.warning ||
+            "Saved locally, but Shopify shipping sync did not complete.",
+          );
+        } else {
+          toastr.success("Shipping policy saved.");
+        }
+        await refresh();
+        setAuditRefreshToken((t) => t + 1);
+        setEdit((e) => ({ ...e, shippingPolicy: false }));
+        return;
+      }
+
+      // The first approved Markets rollout supports checkout-to-checkout,
+      // ACTIVE/published products with only automatic collection membership.
+      if (plan.targetIsContactOnly) {
+        throw new Error(
+          "Changing a Shopify Markets product to contact-only shipping is not yet supported by the guarded reassignment workflow.",
+        );
+      }
+      if (plan.targetHasMatchingTagSource !== true ||
+          plan.currentShopifyTagMatchesSql !== true ||
+          plan.shopifyProductStatus !== "ACTIVE" ||
+          plan.shopifyPublishedOnOnlineStore !== true ||
+          plan.oldManualSelectionScanComplete !== true ||
+          plan.allMappedManualSelectionScansComplete !== true ||
+          (plan.unmappedActiveCheckoutPolicyIds || []).length > 0 ||
+          (plan.manualMembershipsAcrossMappedCollections || []).length > 0 ||
+          (plan.collectionsWithIncompleteScans || []).length > 0) {
+        throw new Error(
+          "Shipping reassignment prerequisites did not pass. The product was not changed. Review the Shopify shipping reassignment plan.",
+        );
+      }
+
+      const fromName = vm.shippingPolicyName || `Policy ${currentPolicyId}`;
+      const toName =
+        shippingPolicyOptions.find((p) => Number(p.value) === targetPolicyId)
+          ?.label || `Policy ${targetPolicyId}`;
+      const confirmed = window.confirm(
+        `Change shipping for Part #${vm.id} from "${fromName}" to "${toName}"?\n\n` +
+        "Shopify will temporarily unpublish the item, verify the new shipping " +
+        "collection, update the database, and republish it. " +
+        "This can take over a minute. Do not retry if an error occurs.",
+      );
+      if (!confirmed) return;
+
+      // From this point a network failure might mean the server completed
+      // some writes. Never automatically retry or fall back to PATCH.
+      writeStarted = true;
+      const response = await partsService.reassignMarketShipping(vm.id, {
+        expectedCurrentShippingPolicyId: currentPolicyId,
+        targetShippingPolicyId: targetPolicyId,
+        expectedShopifyProductGid: plan.shopifyProductGid,
+        confirmation: "REASSIGN_MARKETS_SHIPPING_POLICY",
+      });
+      if (response?.isSuccessful !== true ||
+          response?.item?.localPolicyUpdated !== true ||
+          response?.item?.shopifyMembershipVerified !== true ||
+          response?.item?.publicationRestored !== true) {
+        throw new Error(
+          "The reassignment response was incomplete. Inspect Shopify and SQL; do not retry.",
+        );
+      }
+
+      toastr.success("Shipping policy reassigned and Shopify publication restored.");
+      await refresh();
+      setAuditRefreshToken((t) => t + 1);
+      setEdit((e) => ({ ...e, shippingPolicy: false }));
+    } catch (error) {
+      console.error("Shipping policy edit failed", error);
+      const apiMessage =
+        error?.response?.data?.errors?.[0] ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Shipping policy change failed.";
+      const extra =
+        writeStarted && error?.response?.status !== 409 &&
+        error?.response?.status !== 403
+          ? " Do not retry; inspect the part in Shopify and SQL first."
+          : "";
+      toastr.error(`${apiMessage}${extra}`);
+      if (writeStarted) {
+        // The API might have changed SQL or Shopify even if the browser
+        // lost its connection. Reload the current part without resubmitting.
+        await refresh();
+      }
+    } finally {
+      setShippingChangeInProgress(false);
+      setSaving(false);
+      saveLockRef.current = false;
     }
   };
 
@@ -1490,13 +1633,16 @@ function AdminPartDetails() {
                       value={String(vm.shippingPolicyId ?? "")}
                       options={shippingPolicyOptions}
                       disabled={saving}
-                      onSubmit={(val) =>
-                        patchAndRefresh({ shippingPolicyId: Number(val) })
-                      }
+                      onSubmit={changeShippingPolicy}
                       onCancel={() =>
                         setEdit((e) => ({ ...e, shippingPolicy: false }))
                       }
                     />
+                    {shippingChangeInProgress && (
+                      <small role="status" className="apd-shipping-status">
+                        Verifying Shopify shipping collection and publication. This may take over a minute.
+                      </small>
+                    )}
                   ) : (
                     <>
                       {vm.shippingPolicyName || "—"}

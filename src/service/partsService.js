@@ -42,6 +42,32 @@ const patchPart = (payload, id) => {
   return axios(config).then(onGlobalSuccess).catch(onGlobalError);
 };
 
+
+const getShippingReassignmentPlan = (id, targetShippingPolicyId) => {
+  const config = {
+    method: "GET",
+    url: `${homeEndpoint}/${id}/shopify/shipping-reassignment-plan`,
+    params: { targetShippingPolicyId },
+    withCredentials: true,
+    crossdomain: true,
+  };
+  return axios(config).then(onGlobalSuccess).catch(onGlobalError);
+};
+
+// Reassignment is guarded server-side, entirely independently of legacy PATCH.
+// The normal edit UI only calls this after a read-only plan and confirmation.
+const reassignMarketShipping = (id, request) => {
+  const config = {
+    method: "POST",
+    url: `${homeEndpoint}/${id}/shopify/shipping-reassign`,
+    data: request,
+    withCredentials: true,
+    crossdomain: true,
+    headers: { "Content-Type": "application/json" },
+  };
+  return axios(config).then(onGlobalSuccess).catch(onGlobalError);
+};
+
 const getPartById = (id) => {
   const config = {
     method: "GET",
@@ -239,6 +265,8 @@ const partsService = {
   deletePart,
   addPart,
   patchPart,
+  getShippingReassignmentPlan,
+  reassignMarketShipping,
   getPartById,
   getAllAvailablePartsCustomer,
   getAllParts,
