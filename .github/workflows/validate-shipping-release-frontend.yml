@@ -1,0 +1,25 @@
+name: Validate Shipping Release Frontend (BUILD ONLY)
+
+on:
+  push:
+    branches:
+      - release/markets-shipping-prod-prep-20261028
+
+permissions:
+  contents: read
+
+jobs:
+  build-no-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Build production release candidate (no deployment)
+        env:
+          CI: false
+        run: npm run build

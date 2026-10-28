@@ -42,6 +42,54 @@ const patchPart = (payload, id) => {
   return axios(config).then(onGlobalSuccess).catch(onGlobalError);
 };
 
+
+const getShippingReassignmentPlan = (id, targetShippingPolicyId) => {
+  const config = {
+    method: "GET",
+    url: `${homeEndpoint}/${id}/shopify/shipping-reassignment-plan`,
+    params: { targetShippingPolicyId },
+    withCredentials: true,
+    crossdomain: true,
+  };
+  return axios(config).then(onGlobalSuccess).catch(onGlobalError);
+};
+
+// Reassignment is guarded server-side, entirely independently of legacy PATCH.
+// The normal edit UI only calls this after a read-only plan and confirmation.
+const reassignMarketShipping = (id, request) => {
+  const config = {
+    method: "POST",
+    url: `${homeEndpoint}/${id}/shopify/shipping-reassign`,
+    data: request,
+    withCredentials: true,
+    crossdomain: true,
+    headers: { "Content-Type": "application/json" },
+  };
+  return axios(config).then(onGlobalSuccess).catch(onGlobalError);
+};
+
+
+const getShippingReassignmentJob = (id) => {
+  return axios({
+    method: "GET",
+    url: `${homeEndpoint}/${id}/shopify/shipping-reassignment-job`,
+    withCredentials: true,
+    crossdomain: true,
+  }).then(onGlobalSuccess).catch(onGlobalError);
+};
+
+// Returns a persisted job immediately; actual Shopify work runs on the API.
+// Browser navigation/closure does not cancel the queued operation.
+const queueShippingReassignment = (id, request) => {
+  return axios({
+    method: "POST",
+    url: `${homeEndpoint}/${id}/shopify/shipping-reassignment-job`,
+    data: request,
+    withCredentials: true,
+    crossdomain: true,
+  }).then(onGlobalSuccess).catch(onGlobalError);
+};
+
 const getPartById = (id) => {
   const config = {
     method: "GET",
@@ -239,6 +287,10 @@ const partsService = {
   deletePart,
   addPart,
   patchPart,
+  getShippingReassignmentPlan,
+  reassignMarketShipping,
+  getShippingReassignmentJob,
+  queueShippingReassignment,
   getPartById,
   getAllAvailablePartsCustomer,
   getAllParts,

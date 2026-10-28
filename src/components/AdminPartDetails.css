@@ -899,3 +899,17 @@
     align-items: start;
   }
 }
+
+/* Long-running Shopify updates are server-owned jobs, not browser requests. */
+.apd-shipping-job-status {
+  padding: 10px 12px;
+  margin: 8px 0;
+  border: 1px solid #b78f40;
+  border-radius: 6px;
+  background: rgba(178, 139, 66, 0.12);
+  line-height: 1.5;
+}
+.apd-shipping-job-status strong { display: block; margin-bottom: 3px; }
+.apd-shipping-job-status small { display: block; margin-top: 5px; }
+.apd-shipping-job-error { color: #e6a3a3; }
+.apd-shipping-job-completed { display: block; margin: 4px 0; }
