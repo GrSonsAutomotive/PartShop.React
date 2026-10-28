@@ -628,17 +628,7 @@ function AdminPartDetails() {
         );
       }
 
-      const fromName = vm.shippingPolicyName || `Policy ${currentPolicyId}`;
-      const toName =
-        shippingPolicyOptions.find((p) => Number(p.value) === targetPolicyId)
-          ?.label || `Policy ${targetPolicyId}`;
-      const confirmed = window.confirm(
-        `Change shipping for Part #${vm.id} from "${fromName}" to "${toName}"?\n\n` +
-        "The update runs in the background. Shopify will temporarily unpublish " +
-        "the item until its new shipping collection is verified. You may " +
-        "continue other work or close this page. Do not submit the change twice.",
-      );
-      if (!confirmed) return;
+      // The selected policy is queued immediately; API preflight still enforces safety.
 
       // From this point a network failure might mean the server completed
       // some writes. Never automatically retry or fall back to PATCH.
@@ -654,8 +644,9 @@ function AdminPartDetails() {
       }
       shippingJobSeenRef.current = response.item;
       setShippingJob(response.item);
-      toastr.info("Shipping update queued. You can continue other work; no need to keep this page open.");
+      toastr.info("Shipping update queued. Part temporarily unavailable until Shopify verifies the new policy.");
       setEdit((e) => ({ ...e, shippingPolicy: false }));
+      partsService.getPartById(id).then(onGetSuccess).catch(console.warn);
     } catch (error) {
       console.error("Shipping policy edit failed", error);
       const apiMessage =
@@ -1672,6 +1663,7 @@ function AdminPartDetails() {
                       <div>
                         Policy {shippingJob.fromPolicyId} → {shippingJob.toPolicyId}
                       </div>
+                      <div>Part temporarily unavailable until the shipping update is verified.</div>
                       <div>
                         {shippingJob.status === "WaitingForShopify"
                           ? "Waiting for Shopify to update its automatic shipping collection."
@@ -1736,7 +1728,7 @@ function AdminPartDetails() {
                     <InLineSelect
                       value={String(vm.availableId ?? "")}
                       options={availabilityOptions}
-                      disabled={saving}
+                      disabled={saving || !!shippingJob?.isOpen}
                       onSubmit={(val) =>
                         patchAndRefresh({ availableId: Number(val) })
                       }
@@ -1749,7 +1741,7 @@ function AdminPartDetails() {
                       {vm.availableStatus || "—"}
                       <button
                         className="apd-btn apd-btn--outlined apd-btn--xs"
-                        disabled={saving}
+                        disabled={saving || !!shippingJob?.isOpen}
                         onClick={() =>
                           setEdit((e) => ({ ...e, availability: true }))
                         }
