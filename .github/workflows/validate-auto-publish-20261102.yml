@@ -1,0 +1,21 @@
+name: Validate Auto Publish Frontend (BUILD ONLY)
+on:
+  push:
+    branches:
+      - feat/auto-publish-parts-after-gallery-20261102
+permissions:
+  contents: read
+jobs:
+  build-no-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Compile React (no Azure deployment)
+        env:
+          CI: 'false'
+        run: npm run build
