@@ -1,6 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import "./admin-actions.css";
+import PendingPublishingPanel from "./PendingPublishingPanel";
 
 const AddPartIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -139,6 +140,7 @@ function AdminActions() {
           );
         })}
       </section>
+      <PendingPublishingPanel />
     </main>
   );
 }

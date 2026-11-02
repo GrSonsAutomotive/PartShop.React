@@ -1,0 +1,26 @@
+.pending-pub {
+  max-width: 1080px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  border: 1px solid #d5dce4;
+  border-radius: 12px;
+  background: #fff;
+  color: #27313d;
+}
+.pending-pub h2 { font-size: 1.25rem; margin: 0 0 .65rem; }
+.pending-pub p { line-height: 1.5; }
+.pending-pub__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin: 1.25rem 0; }
+.pending-pub__actions button {
+  background: #263c5b; border: 0; border-radius: 7px;
+  color: white; padding: .6rem 1rem; cursor: pointer;
+}
+.pending-pub__actions button:disabled { opacity: .55; cursor: not-allowed; }
+.pending-pub__table-wrap { overflow-x: auto; }
+.pending-pub table { border-collapse: collapse; width: 100%; min-width: 600px; }
+.pending-pub th, .pending-pub td {
+  text-align: left; border-bottom: 1px solid #e5e9ee;
+  vertical-align: top; padding: .7rem;
+}
+.pending-pub th { font-weight: 700; }
+.pending-pub small { display: block; color: #596779; margin-top: .2rem; }
+.pending-pub a { text-decoration: underline; }
