@@ -208,6 +208,16 @@ const previewPendingShopifyParts = (afterPartId = 0, limit = 20) =>
     crossdomain: true,
   }).then((res) => res.data);
 
+// Read-only review before an existing Shopify Markets part changes shipping
+// policy. This does NOT enqueue a job or update SQL/Shopify.
+const getShippingReassignmentPlan = (partId, targetShippingPolicyId) =>
+  axios({
+    method: "GET",
+    url: `${homeEndpoint}/${encodeURIComponent(partId)}/shopify/shipping-reassignment-plan?targetShippingPolicyId=${encodeURIComponent(targetShippingPolicyId)}`,
+    withCredentials: true,
+    crossdomain: true,
+  }).then((res) => res.data);
+
 const publishShopifyProduct = (partId) => {
   const config = {
     method: "POST",
@@ -259,6 +269,7 @@ const partsService = {
   getByCategoryCustomer,
   getByModelCustomer,
   previewPendingShopifyParts,
+  getShippingReassignmentPlan,
   publishShopifyProduct,
   syncShopifyProduct,
   unpublishShopifyProduct,
