@@ -899,3 +899,30 @@
     align-items: start;
   }
 }
+
+/* Read-only shipping reassignment eligibility; never a save/submit panel. */
+.apd-shipping-reassign-preview {
+  flex: 1 0 100%;
+  min-width: 0;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--site-border-strong, #4b5869);
+  border-radius: 8px;
+  background: var(--site-surface-secondary, #242c37);
+  color: var(--site-text, #f4f7fb);
+  line-height: 1.45;
+}
+
+.apd-shipping-reassign-preview p {
+  margin: 8px 0;
+}
+
+.apd-shipping-reassign-preview ul {
+  padding-left: 20px;
+  margin: 10px 0;
+}
+
+.apd-shipping-reassign-warning {
+  font-weight: 600;
+  color: #f6bf72;
+}
