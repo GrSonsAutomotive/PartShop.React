@@ -6,7 +6,6 @@ import "./pending-publishing.css";
 // explicitly select previously created rows; the panel never runs by itself.
 export default function PendingPublishingPanel() {
   const [items, setItems] = useState([]);
-  const [afterPartId, setAfterPartId] = useState(0);
   const [nextAfter, setNextAfter] = useState(null);
   const [started, setStarted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -24,7 +23,6 @@ export default function PendingPublishingPanel() {
       }
 
       setStarted(true);
-      setAfterPartId(cursor);
       setNextAfter(data.hasMore ? data.nextAfterPartId : null);
       setItems((previous) => append
         ? [...previous, ...data.items.filter((p) =>
