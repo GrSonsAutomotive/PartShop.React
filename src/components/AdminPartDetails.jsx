@@ -90,6 +90,10 @@ function AdminPartDetails() {
   const [isUnpublishingShopify, setIsUnpublishingShopify] = useState(false);
   const [shopifyPublishMessage, setShopifyPublishMessage] = useState("");
   const [shopifyPublishError, setShopifyPublishError] = useState("");
+  const [shippingPreviewLoading, setShippingPreviewLoading] = useState(false);
+  const [shippingPreview, setShippingPreview] = useState(null);
+  const [shippingPreviewError, setShippingPreviewError] = useState("");
+
 
   const [images, setImages] = useState([]);
   const [activeImage, setActiveImage] = useState("");
@@ -501,6 +505,53 @@ function AdminPartDetails() {
         condition: false,
         shippingPolicy: false,
       });
+    }
+  };
+
+  // Markets shipping policy changes cannot be safely PATCHed for a linked
+  // Shopify product. Preview the FULL source audit and leave execution gated.
+  // Unlinked local-only parts can still use the original PATCH behavior.
+  const previewShippingPolicyChange = async (nextValue) => {
+    const targetId = Number(nextValue);
+    if (!Number.isInteger(targetId) || targetId < 1) {
+      toastr.error("Select a valid shipping policy.");
+      return;
+    }
+    if (targetId === Number(vm.shippingPolicyId)) {
+      setEdit((e) => ({ ...e, shippingPolicy: false }));
+      return;
+    }
+
+    setShippingPreview(null);
+    setShippingPreviewError("");
+
+    if (!part?.shopifyProductId) {
+      await patchAndRefresh({ shippingPolicyId: targetId });
+      return;
+    }
+
+    try {
+      setShippingPreviewLoading(true);
+      const response = await partsService.getShippingReassignmentPlan(vm.id, targetId);
+      const plan = response?.item;
+      if (!plan || plan.partId !== vm.id ||
+          Number(plan.targetShippingPolicyId) !== targetId ||
+          Number(plan.currentShippingPolicyId) !== Number(vm.shippingPolicyId)) {
+        throw new Error("Shipping reassignment preview returned an unexpected part or policy.");
+      }
+
+      setShippingPreview(plan);
+      setEdit((e) => ({ ...e, shippingPolicy: false }));
+    } catch (error) {
+      setShippingPreviewError(
+        error?.response?.data?.message ||
+        error?.response?.data?.errors?.[0] ||
+        error?.message ||
+        "Shipping reassignment preview failed."
+      );
+      setEdit((e) => ({ ...e, shippingPolicy: false }));
+    } finally {
+      setShippingPreviewLoading(false);
     }
   };
 
@@ -1489,10 +1540,8 @@ function AdminPartDetails() {
                     <InLineSelect
                       value={String(vm.shippingPolicyId ?? "")}
                       options={shippingPolicyOptions}
-                      disabled={saving}
-                      onSubmit={(val) =>
-                        patchAndRefresh({ shippingPolicyId: Number(val) })
-                      }
+                      disabled={saving || shippingPreviewLoading}
+                      onSubmit={previewShippingPolicyChange}
                       onCancel={() =>
                         setEdit((e) => ({ ...e, shippingPolicy: false }))
                       }
@@ -1502,14 +1551,69 @@ function AdminPartDetails() {
                       {vm.shippingPolicyName || "—"}
                       <button
                         className="apd-btn apd-btn--outlined apd-btn--xs"
-                        disabled={saving}
-                        onClick={() =>
-                          setEdit((e) => ({ ...e, shippingPolicy: true }))
-                        }
+                        disabled={saving || shippingPreviewLoading}
+                        onClick={() => {
+                          setShippingPreview(null);
+                          setShippingPreviewError("");
+                          setEdit((e) => ({ ...e, shippingPolicy: true }));
+                        }}
                       >
-                        Change
+                        {shippingPreviewLoading ? "Checking..." : "Change"}
                       </button>
                     </>
+                  )}
+                  {(shippingPreview || shippingPreviewError) && (
+                    <div className="apd-shipping-reassign-preview" role="status">
+                      {shippingPreviewError ? (
+                        <p className="apd-shipping-reassign-warning">
+                          Unable to verify shipping assignment: {shippingPreviewError}
+                        </p>
+                      ) : (
+                        <>
+                          <strong>Shipping policy change preview — no changes saved</strong>
+                          <p>
+                            Proposed policy: {shippingPolicyOptions.find(
+                              (option) => Number(option.value) ===
+                                Number(shippingPreview.targetShippingPolicyId)
+                            )?.label || shippingPreview.targetShippingPolicyId}
+                          </p>
+                          <p>
+                            {shippingPreview.allMappedManualSelectionScansComplete === true
+                              ? "Legacy-source scan complete."
+                              : "Legacy-source scan incomplete; changing this part is not yet safe."}
+                            {" "}Explicit legacy assignments found:{" "}
+                            {shippingPreview.manualMembershipsAcrossMappedCollections?.length ?? 0}.
+                          </p>
+                          {shippingPreview.manualMembershipsAcrossMappedCollections?.length > 0 && (
+                            <p className="apd-shipping-reassign-warning">
+                              This part is still selected by an original Shopify shipping source.
+                              Changing its shipping tag alone will not move it safely.
+                            </p>
+                          )}
+                          {shippingPreview.notes?.length > 0 && (
+                            <ul>
+                              {shippingPreview.notes.map((note, index) => (
+                                <li key={index}>{note}</li>
+                              ))}
+                            </ul>
+                          )}
+                          <p className="apd-shipping-reassign-warning">
+                            Actual shipping-policy reassignment is not enabled in production yet.
+                            This preview does not update SQL, Shopify, or publication status.
+                          </p>
+                        </>
+                      )}
+                      <button
+                        className="apd-btn apd-btn--outlined apd-btn--xs"
+                        type="button"
+                        onClick={() => {
+                          setShippingPreview(null);
+                          setShippingPreviewError("");
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
                   )}
                 </dd>
               </div>
