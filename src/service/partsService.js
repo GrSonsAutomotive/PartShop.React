@@ -199,6 +199,15 @@ const customerSearch = (params = {}) => {
   return axios(config).then(onGlobalSuccess).catch(onGlobalError);
 };
 
+// Read-only review of SQL Pending parts. Never publishes automatically.
+const previewPendingShopifyParts = (afterPartId = 0, limit = 20) =>
+  axios({
+    method: "GET",
+    url: `${homeEndpoint}/shopify/pending/preview?afterPartId=${encodeURIComponent(afterPartId)}&limit=${encodeURIComponent(limit)}`,
+    withCredentials: true,
+    crossdomain: true,
+  }).then((res) => res.data);
+
 const publishShopifyProduct = (partId) => {
   const config = {
     method: "POST",
@@ -249,6 +258,7 @@ const partsService = {
   addPartImages,
   getByCategoryCustomer,
   getByModelCustomer,
+  previewPendingShopifyParts,
   publishShopifyProduct,
   syncShopifyProduct,
   unpublishShopifyProduct,
