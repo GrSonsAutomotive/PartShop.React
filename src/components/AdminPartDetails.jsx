@@ -77,6 +77,9 @@ function AdminPartDetails() {
   const [part, setPart] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [shippingChangeInProgress, setShippingChangeInProgress] = useState(false);
+  const [shippingJob, setShippingJob] = useState(null);
+  const shippingJobSeenRef = useRef(null);
   const [auditRefreshToken, setAuditRefreshToken] = useState(0);
   const [conditionOptions, setConditionOptions] = useState([]);
   const [shippingPolicyOptions, setShippingPolicyOptions] = useState([]);
@@ -178,6 +181,41 @@ function AdminPartDetails() {
     setLoading(true);
     partsService.getPartById(id).then(onGetSuccess).catch(onError);
     refreshImages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+
+  // Polling is strictly UI feedback. The job itself runs in the API and is
+  // persisted in SQL; it continues after logout, navigation or tab closure.
+  useEffect(() => {
+    let mounted = true;
+    const updateShippingStatus = async () => {
+      try {
+        const response = await partsService.getShippingReassignmentJob(id);
+        if (!mounted) return;
+        const next = response?.item || null;
+        const old = shippingJobSeenRef.current;
+        if (next?.status === "Completed" &&
+            old?.jobId === next.jobId && old?.status !== "Completed") {
+          toastr.success("Shopify shipping update completed; product republished.");
+          partsService.getPartById(id).then(onGetSuccess).catch(onError);
+          setAuditRefreshToken((t) => t + 1);
+        }
+        if (next?.status === "AttentionRequired" &&
+            old?.jobId === next.jobId && old?.status !== "AttentionRequired") {
+          toastr.error("Shipping update needs administrator review. The product should remain unpublished.");
+        }
+        shippingJobSeenRef.current = next;
+        setShippingJob(next);
+      } catch (e) {
+        // In a deployment before the DEV SQL migration, avoid blocking the
+        // rest of the Admin Part Details page. The mutation API remains gated.
+        console.warn("Shipping job status unavailable", e);
+      }
+    };
+    updateShippingStatus();
+    const timer = window.setInterval(updateShippingStatus, 15000);
+    return () => { mounted = false; window.clearInterval(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -501,6 +539,136 @@ function AdminPartDetails() {
         condition: false,
         shippingPolicy: false,
       });
+    }
+  };
+
+
+  // Shipping-only changes use the existing PATCH for unmapped/legacy parts.
+  // For products using Markets shipping, the dedicated guarded endpoint runs
+  // the proven DRAFT -> tag -> collection -> SQL -> publication sequence.
+  const changeShippingPolicy = async (selectedValue) => {
+    const targetPolicyId = Number(selectedValue);
+    const currentPolicyId = Number(vm.shippingPolicyId);
+    if (!Number.isInteger(targetPolicyId) || targetPolicyId <= 0) {
+      toastr.error("Select a valid shipping policy.");
+      return;
+    }
+    if (targetPolicyId === currentPolicyId) {
+      setEdit((e) => ({ ...e, shippingPolicy: false }));
+      return;
+    }
+    if (!part?.shopifyProductId) {
+      // A local-only part has no Shopify collection to migrate.
+      await patchAndRefresh({ shippingPolicyId: targetPolicyId });
+      return;
+    }
+    if (saveLockRef.current || shippingJob?.isOpen) {
+      if (shippingJob?.isOpen) toastr.warning("This part already has a pending shipping update.");
+      return;
+    }
+    saveLockRef.current = true;
+    setSaving(true);
+    setShippingChangeInProgress(true);
+    let writeStarted = false;
+    try {
+      const preview = await partsService.getShippingReassignmentPlan(
+        vm.id,
+        targetPolicyId,
+      );
+      const plan = preview?.item;
+      if (!plan || plan.currentShippingPolicyId !== currentPolicyId ||
+          plan.targetShippingPolicyId !== targetPolicyId ||
+          plan.shopifyProductGid !==
+            `gid://shopify/Product/${part.shopifyProductId}`) {
+        throw new Error(
+          "The part changed since this page loaded. Refresh before changing its shipping policy.",
+        );
+      }
+
+      if (!plan.marketDrivenShipping) {
+        // Legacy delivery profiles retain their existing API behavior.
+        const response = await partsService.patchPart(
+          { shippingPolicyId: targetPolicyId },
+          vm.id,
+        );
+        writeStarted = true;
+        if (response?.item?.shopifySyncAttempted &&
+            !response.item.shopifySyncSucceeded) {
+          toastr.warning(
+            response.item.warning ||
+            "Saved locally, but Shopify shipping sync did not complete.",
+          );
+        } else {
+          toastr.success("Shipping policy saved.");
+        }
+        await refresh();
+        setAuditRefreshToken((t) => t + 1);
+        setEdit((e) => ({ ...e, shippingPolicy: false }));
+        return;
+      }
+
+      // The first approved Markets rollout supports checkout-to-checkout,
+      // ACTIVE/published products with only automatic collection membership.
+      if (plan.targetIsContactOnly) {
+        throw new Error(
+          "Changing a Shopify Markets product to contact-only shipping is not yet supported by the guarded reassignment workflow.",
+        );
+      }
+      if (plan.targetHasMatchingTagSource !== true ||
+          plan.currentShopifyTagMatchesSql !== true ||
+          plan.shopifyProductStatus !== "ACTIVE" ||
+          plan.shopifyPublishedOnOnlineStore !== true ||
+          plan.oldManualSelectionScanComplete !== true ||
+          plan.allMappedManualSelectionScansComplete !== true ||
+          (plan.unmappedActiveCheckoutPolicyIds || []).length > 0 ||
+          (plan.manualMembershipsAcrossMappedCollections || []).length > 0 ||
+          (plan.collectionsWithIncompleteScans || []).length > 0) {
+        throw new Error(
+          "Shipping reassignment prerequisites did not pass. The product was not changed. Review the Shopify shipping reassignment plan.",
+        );
+      }
+
+      // The selected policy is queued immediately; API preflight still enforces safety.
+
+      // From this point a network failure might mean the server completed
+      // some writes. Never automatically retry or fall back to PATCH.
+      writeStarted = true;
+      const response = await partsService.queueShippingReassignment(vm.id, {
+        expectedCurrentShippingPolicyId: currentPolicyId,
+        targetShippingPolicyId: targetPolicyId,
+        expectedShopifyProductGid: plan.shopifyProductGid,
+        confirmation: "REASSIGN_MARKETS_SHIPPING_POLICY",
+      });
+      if (response?.item?.jobId == null) {
+        throw new Error("Shipping job acceptance could not be confirmed. Check the status before submitting again.");
+      }
+      shippingJobSeenRef.current = response.item;
+      setShippingJob(response.item);
+      toastr.info("Shipping update queued. Part temporarily unavailable until Shopify verifies the new policy.");
+      setEdit((e) => ({ ...e, shippingPolicy: false }));
+      partsService.getPartById(id).then(onGetSuccess).catch(console.warn);
+    } catch (error) {
+      console.error("Shipping policy edit failed", error);
+      const apiMessage =
+        error?.response?.data?.errors?.[0] ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Shipping policy change failed.";
+      const extra =
+        writeStarted && error?.response?.status !== 409 &&
+        error?.response?.status !== 403
+          ? " Do not retry; check the shipping job status before taking another action."
+          : "";
+      toastr.error(`${apiMessage}${extra}`);
+      if (writeStarted) {
+        // The API might have changed SQL or Shopify even if the browser
+        // lost its connection. Reload the current part without resubmitting.
+        await refresh();
+      }
+    } finally {
+      setShippingChangeInProgress(false);
+      setSaving(false);
+      saveLockRef.current = false;
     }
   };
 
@@ -1485,24 +1653,63 @@ function AdminPartDetails() {
               <div>
                 <dt>Shipping Policy</dt>
                 <dd>
+                  {shippingJob?.isOpen && (
+                    <div className="apd-shipping-job-status" role="status">
+                      <strong>
+                        {shippingJob.status === "AttentionRequired"
+                          ? "Shipping update needs attention"
+                          : "Shipping update pending"}
+                      </strong>
+                      <div>
+                        Policy {shippingJob.fromPolicyId} → {shippingJob.toPolicyId}
+                      </div>
+                      <div>Part temporarily unavailable until the shipping update is verified.</div>
+                      <div>
+                        {shippingJob.status === "WaitingForShopify"
+                          ? "Waiting for Shopify to update its automatic shipping collection."
+                          : shippingJob.status === "AttentionRequired"
+                            ? "Do not republish or retry; an administrator must review the part."
+                            : "Shopify is processing the change in the background."}
+                      </div>
+                      <small>
+                        You can continue other work, navigate away or close this tab.
+                        This update will keep running on the server.
+                      </small>
+                      {shippingJob.lastError && (
+                        <small className="apd-shipping-job-error">
+                          {shippingJob.lastError}
+                        </small>
+                      )}
+                    </div>
+                  )}
+                  {shippingJob?.status === "Completed" && (
+                    <small className="apd-shipping-job-completed">
+                      Last shipping update completed and verified.
+                    </small>
+                  )}
                   {edit.shippingPolicy ? (
+                    <>
                     <InLineSelect
                       value={String(vm.shippingPolicyId ?? "")}
                       options={shippingPolicyOptions}
                       disabled={saving}
-                      onSubmit={(val) =>
-                        patchAndRefresh({ shippingPolicyId: Number(val) })
-                      }
+                      onSubmit={changeShippingPolicy}
                       onCancel={() =>
                         setEdit((e) => ({ ...e, shippingPolicy: false }))
                       }
                     />
+                    {shippingChangeInProgress && (
+                      <small role="status" className="apd-shipping-status">
+                        Validating and queuing the shipping update…
+                      </small>
+                    )}
+                    </>
                   ) : (
                     <>
                       {vm.shippingPolicyName || "—"}
                       <button
                         className="apd-btn apd-btn--outlined apd-btn--xs"
-                        disabled={saving}
+                        disabled={saving || !!shippingJob?.isOpen}
                         onClick={() =>
                           setEdit((e) => ({ ...e, shippingPolicy: true }))
                         }
@@ -1521,7 +1728,7 @@ function AdminPartDetails() {
                     <InLineSelect
                       value={String(vm.availableId ?? "")}
                       options={availabilityOptions}
-                      disabled={saving}
+                      disabled={saving || !!shippingJob?.isOpen}
                       onSubmit={(val) =>
                         patchAndRefresh({ availableId: Number(val) })
                       }
@@ -1534,7 +1741,7 @@ function AdminPartDetails() {
                       {vm.availableStatus || "—"}
                       <button
                         className="apd-btn apd-btn--outlined apd-btn--xs"
-                        disabled={saving}
+                        disabled={saving || !!shippingJob?.isOpen}
                         onClick={() =>
                           setEdit((e) => ({ ...e, availability: true }))
                         }
