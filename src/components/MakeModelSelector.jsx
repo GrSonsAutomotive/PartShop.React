@@ -19,6 +19,9 @@ function MakeModelSelector({
 
   // Prevent an older request from replacing the results of a newer selection.
   const modelRequestIdRef = useRef(0);
+  // Changing a company clears the parent's old make/model pair while the user
+  // chooses a new model. Do not mistake that temporary blank for a form reset.
+  const awaitingModelSelectionRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -54,6 +57,7 @@ function MakeModelSelector({
     const normalizedInitialModelId = String(initialModelId || "");
 
     if (!normalizedInitialMakeId) {
+      if (awaitingModelSelectionRef.current) return;
       modelRequestIdRef.current += 1;
       setSelectedCompanyMakeId("");
       setSelectedModelId("");
@@ -133,6 +137,7 @@ function MakeModelSelector({
   const handleMakeChange = (event) => {
     const companyMakeId = event.target.value;
 
+    awaitingModelSelectionRef.current = Boolean(companyMakeId);
     setSelectedCompanyMakeId(companyMakeId);
     setSelectedModelId("");
     setModels([]);
@@ -156,6 +161,9 @@ function MakeModelSelector({
 
   const handleModelChange = (event) => {
     const modelId = event.target.value;
+    // Keep the company selection when a model is cleared, but resume normal
+    // prop synchronization once a valid model pair is chosen.
+    awaitingModelSelectionRef.current = Boolean(selectedCompanyMakeId && !modelId);
     setSelectedModelId(modelId);
 
     const selectedModel = models.find(
