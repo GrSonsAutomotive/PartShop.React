@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import toastr from "toastr";
 import catagoryService from "../service/catagoryService";
 import makeService from "../service/makeService";
+import modelService from "../service/modelService";
+import loginService from "../service/loginService";
+import referenceDeletionService from "../service/referenceDeletionService";
 import "./AdminReferenceData.css";
 
 const getApiMessage = (error, fallback) =>
@@ -19,18 +22,60 @@ function AdminReferenceData() {
   const [categoryName, setCategoryName] = useState("");
   const [company, setCompany] = useState("");
   const [modelName, setModelName] = useState("");
+  const [models, setModels] = useState([]);
+  const [canDelete, setCanDelete] = useState(false);
+  const [deletion, setDeletion] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const beginDelete = async (kind, target, label) => {
+    setDeleting(true);
+    try {
+      const response = await referenceDeletionService.preview(kind, target);
+      setDeletion({ kind, target, label, ...response.item });
+    } catch (error) {
+      toastr.error(getApiMessage(error, "Unable to check dependencies."));
+    } finally { setDeleting(false); }
+  };
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    try {
+      await referenceDeletionService.remove(deletion.kind, deletion.target);
+      setDeletion(null);
+      toastr.success("Reference deleted. Inventory was preserved.");
+      await loadReferenceData();
+    } catch (error) {
+      if (error?.response?.data?.item) {
+        setDeletion((previous) => ({ ...previous, ...error.response.data.item }));
+      }
+      toastr.error(getApiMessage(error, "Deletion failed."));
+    } finally { setDeleting(false); }
+  };
+
+  const deleteButton = (kind, target, label) => canDelete && (
+    <button type="button" disabled={loading || deleting}
+      aria-label={`Delete ${label}`} onClick={() => beginDelete(kind, target, label)}>
+      Delete
+    </button>
+  );
 
   const loadReferenceData = async () => {
     setLoading(true);
 
     try {
-      const [categoryResponse, makesResponse] = await Promise.all([
-        catagoryService.getAllCatagories(),
-        makeService.getAllMakes(),
+      const emptyIfMissing = (promise) => promise.catch((error) => {
+        if (error?.response?.status === 404) return { item: [] };
+        throw error;
+      });
+      const [categoryResponse, makesResponse, modelResponse] = await Promise.all([
+        emptyIfMissing(catagoryService.getAllCatagories()),
+        emptyIfMissing(makeService.getAllMakes()),
+        emptyIfMissing(modelService.getAllModels()),
       ]);
 
       setCategories(categoryResponse?.item || []);
       setMakeRows(makesResponse?.item || []);
+      setModels(modelResponse?.item || []);
     } catch (error) {
       console.error("Reference data load failed", error);
       toastr.error(getApiMessage(error, "Failed to load catalog reference data."));
@@ -41,6 +86,10 @@ function AdminReferenceData() {
 
   useEffect(() => {
     loadReferenceData();
+    loginService.getCurrentUser().then((response) => {
+      const user = response?.item;
+      setCanDelete(String(user?.roleName || user?.role?.name || "").replace(/\s/g, "").toLowerCase() === "adminhigh");
+    }).catch(() => setCanDelete(false));
   }, []);
 
   const companies = useMemo(() => {
@@ -53,7 +102,7 @@ function AdminReferenceData() {
       }
     });
 
-    return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
+    return Array.from(unique.values());
   }, [makeRows]);
 
   const groupedMakes = useMemo(() => {
@@ -68,17 +117,16 @@ function AdminReferenceData() {
         groups.set(companyName, []);
       }
 
-      if (model && !groups.get(companyName).includes(model)) {
-        groups.get(companyName).push(model);
+      if (model) {
+        groups.get(companyName).push({ id: row.id, name: model });
       }
     });
 
     return Array.from(groups.entries())
       .map(([companyName, models]) => ({
         company: companyName,
-        models: models.sort((a, b) => a.localeCompare(b)),
-      }))
-      .sort((a, b) => a.company.localeCompare(b.company));
+        models,
+      }));
   }, [makeRows]);
 
   const onCategorySubmit = async (event) => {
@@ -200,6 +248,7 @@ function AdminReferenceData() {
             {categories.map((category) => (
               <span className="admin-reference-chip" key={category.id}>
                 {category.name}
+                {deleteButton("catagories", category.id, `category ${category.name}`)}
               </span>
             ))}
           </div>
@@ -275,10 +324,12 @@ function AdminReferenceData() {
           {groupedMakes.map((group) => (
             <div className="admin-reference-make" key={group.company}>
               <h3>{group.company}</h3>
+              {deleteButton("manufacturer", group.company, `manufacturer ${group.company}`)}
               <div className="admin-reference-chip-list">
                 {group.models.map((model) => (
-                  <span className="admin-reference-chip" key={`${group.company}-${model}`}>
-                    {model}
+                  <span className="admin-reference-chip" key={model.id}>
+                    {model.name}
+                    {deleteButton("makes", model.id, `${group.company} ${model.name} association`)}
                   </span>
                 ))}
               </div>
@@ -286,6 +337,29 @@ function AdminReferenceData() {
           ))}
         </div>
       </section>
+      {canDelete && <section className="admin-reference-card">
+        <h2>Global model records</h2>
+        <p>Global models can be shared by manufacturers. Remove associations first.</p>
+        {models.map((model) => <span className="admin-reference-chip" key={model.id}>
+          {String(model.name).trim()}
+          {deleteButton("models", model.id, `global model ${String(model.name).trim()}`)}
+        </span>)}
+      </section>}
+      {deletion && <div className="reference-delete-backdrop">
+        <section className="admin-reference-card reference-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-delete-title">
+          <h2 id="reference-delete-title">Delete {deletion.label}?</h2>
+          <p>Target records: {deletion.targetRows}. Inventory and Shopify resources will be preserved.</p>
+          <dl>{[["Primary parts", deletion.primaryParts], ["Additional categories", deletion.categories],
+            ["Additional fitments", deletion.fitments], ["Make associations", deletion.makes],
+            ["Discount rules (including historical)", deletion.discountRules]].map(([label, count]) =>
+              <React.Fragment key={label}><dt>{label}</dt><dd>{count}</dd></React.Fragment>)}</dl>
+          {!deletion.canDelete && <p role="alert">Deletion is blocked. Resolve the references before trying again.</p>}
+          <button type="button" disabled={deleting} onClick={() => setDeletion(null)}>Cancel</button>
+          <button type="button" disabled={deleting || !deletion.canDelete} onClick={confirmDelete}>
+            {deleting ? "Deleting…" : "Confirm deletion"}
+          </button>
+        </section>
+      </div>}
     </main>
   );
 }

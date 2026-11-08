@@ -222,3 +222,15 @@
     padding-top: 20px;
   }
 }
+.reference-delete-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: #0009;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+.reference-delete-dialog { max-width: 38rem; max-height: 90vh; overflow: auto; }
+.admin-reference-chip button { margin-left: .6rem; }
+.reference-delete-dialog button { margin-right: .75rem; }
