@@ -53,7 +53,7 @@ function AdminReferenceData() {
   };
 
   const deleteButton = (kind, target, label) => canDelete && (
-    <button type="button" disabled={loading || deleting}
+    <button className="admin-reference-delete" type="button" disabled={loading || deleting}
       aria-label={`Delete ${label}`} onClick={() => beginDelete(kind, target, label)}>
       Delete
     </button>
@@ -323,8 +323,10 @@ function AdminReferenceData() {
         <div className="admin-reference-directory">
           {groupedMakes.map((group) => (
             <div className="admin-reference-make" key={group.company}>
-              <h3>{group.company}</h3>
-              {deleteButton("manufacturer", group.company, `manufacturer ${group.company}`)}
+              <div className="admin-reference-make__header">
+                <h3>{group.company}</h3>
+                {deleteButton("manufacturer", group.company, `manufacturer ${group.company}`)}
+              </div>
               <div className="admin-reference-chip-list">
                 {group.models.map((model) => (
                   <span className="admin-reference-chip" key={model.id}>
