@@ -222,3 +222,66 @@
     padding-top: 20px;
   }
 }
+.reference-delete-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: #0009;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+.reference-delete-dialog { max-width: 38rem; max-height: 90vh; overflow: auto; }
+.admin-reference-make__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.admin-reference-make__header h3 {
+  margin: 0;
+}
+
+.admin-reference-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px solid #a44d55;
+  border-radius: 999px;
+  background: #4b252b;
+  color: #fff;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.admin-reference-delete:hover:not(:disabled) {
+  background: #71303a;
+  border-color: #cc6570;
+}
+
+.admin-reference-delete:focus-visible {
+  outline: 2px solid var(--site-primary, #4f8cff);
+  outline-offset: 2px;
+}
+
+.admin-reference-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.admin-reference-chip .admin-reference-delete {
+  margin-left: 8px;
+}
+
+.reference-delete-dialog button { margin-right: .75rem; }
