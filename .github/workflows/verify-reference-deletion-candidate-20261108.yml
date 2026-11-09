@@ -1,0 +1,34 @@
+name: Verify reference deletion release candidate (build/test only)
+
+on:
+  push:
+    branches:
+      - ci/verify-reference-deletion-20261108
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: React clean install, Jest and optimized build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout release candidate snapshot
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Clean installation from reviewed lockfile
+        run: npm ci --no-audit --no-fund
+      - name: Run Jest without watch
+        env:
+          CI: 'true'
+        run: npm test -- --watchAll=false --runInBand
+      - name: Build optimized static frontend
+        env:
+          CI: 'false'
+        run: npm run build
+      # No Azure Static Web Apps action; no deployment or privileged secrets.
