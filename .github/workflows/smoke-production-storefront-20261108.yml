@@ -1,0 +1,26 @@
+name: Read-only production storefront smoke (no deployment)
+
+on:
+  push:
+    branches:
+      - ci/smoke-production-storefront-20261108
+
+permissions:
+  contents: read
+
+jobs:
+  storefront-get:
+    name: Production homepage HTTP and HTML smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read-only HTTPS GET
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 --retry-delay 4 --retry-all-errors --connect-timeout 8 --max-time 25 \
+            --output index.html https://grsonsautomotive.com/
+          grep -Eq 'id="root"' index.html || { echo "Expected React root element missing"; exit 1; }
+          grep -Eq 'static/js/|\.js' index.html || { echo "Expected compiled JavaScript reference missing"; exit 1; }
+          echo "PASS production storefront HTTPS 200 and React index shell"
+          # No checkout, login, customer data dump, payment, SQL or Shopify writes.
