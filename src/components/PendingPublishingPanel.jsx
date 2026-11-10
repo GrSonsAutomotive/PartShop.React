@@ -12,6 +12,14 @@ export default function PendingPublishingPanel() {
   const [publishing, setPublishing] = useState(false);
   const [selected, setSelected] = useState([]);
   const [results, setResults] = useState([]);
+  const maxBatchSize = 10;
+
+  // Select All means the next eligible batch, not every loaded page.
+  const eligibleIds = items.filter((item) => item.eligible === true)
+    .map((item) => item.partId);
+  const nextBatchIds = eligibleIds.slice(0, maxBatchSize);
+  const isBatchSelected = nextBatchIds.length > 0 &&
+    nextBatchIds.every((id) => selected.includes(id));
 
   const fetchPage = async (cursor = 0, append = false) => {
     setLoading(true);
@@ -43,22 +51,19 @@ export default function PendingPublishingPanel() {
   const toggle = (partId) =>
     setSelected((previous) => previous.includes(partId)
       ? previous.filter((id) => id !== partId)
-      : [...previous, partId]);
+      : previous.length < maxBatchSize ? [...previous, partId] : previous);
+
+  const toggleSelectAll = () => {
+    setSelected(isBatchSelected ? [] : nextBatchIds);
+  };
 
   const publishSelected = async () => {
     const candidates = items.filter((item) =>
       selected.includes(item.partId) && item.eligible === true);
-    if (candidates.length === 0 || candidates.length > 10) {
+    if (candidates.length === 0 || candidates.length > maxBatchSize) {
       window.alert("Select between 1 and 10 eligible Pending parts.");
       return;
     }
-
-    const approved = window.confirm(
-      `Publish these ${candidates.length} Pending parts to Shopify and make them Available once verified?\n\n` +
-      candidates.map((part) => `#${part.partId} — ${part.name}`).join("\n") +
-      "\n\nConfirm that these parts have finished uploading photos."
-    );
-    if (!approved) return;
 
     setPublishing(true);
     const outcome = [];
@@ -117,11 +122,23 @@ export default function PendingPublishingPanel() {
 
       {items.length > 0 && (
         <>
+          <p className="pending-pub__selection-hint">
+            Select All chooses up to 10 eligible listings currently loaded.
+            Publish each batch, then select the next batch.
+          </p>
           <div className="pending-pub__table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th scope="col">Select</th>
+                  <th scope="col">
+                    <label className="pending-pub__select-all">
+                      <input type="checkbox" aria-label="Select all eligible (up to 10)"
+                        checked={isBatchSelected}
+                        disabled={loading || publishing || nextBatchIds.length === 0}
+                        onChange={toggleSelectAll}/>
+                      <span>Select all (up to 10)</span>
+                    </label>
+                  </th>
                   <th scope="col">Part</th>
                   <th scope="col">Quantity</th>
                   <th scope="col">Status</th>
@@ -134,7 +151,8 @@ export default function PendingPublishingPanel() {
                     <td>
                       <input type="checkbox" aria-label={`Select part ${part.partId}`}
                         checked={selected.includes(part.partId)}
-                        disabled={!part.eligible || publishing}
+                        disabled={!part.eligible || publishing || loading ||
+                          (!selected.includes(part.partId) && selected.length >= maxBatchSize)}
                         onChange={() => toggle(part.partId)}/>
                     </td>
                     <td>
@@ -154,7 +172,7 @@ export default function PendingPublishingPanel() {
           </div>
 
           <div className="pending-pub__actions">
-            <button type="button" disabled={publishing || loading || selected.length === 0 || selected.length > 10}
+            <button type="button" disabled={publishing || loading || selected.length === 0 || selected.length > maxBatchSize}
               onClick={publishSelected}>
               {publishing ? "Publishing selected…" : `Publish selected (${selected.length}/10)`}
             </button>
