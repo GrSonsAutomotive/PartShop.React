@@ -24,3 +24,7 @@
 .pending-pub th { font-weight: 700; }
 .pending-pub small { display: block; color: #596779; margin-top: .2rem; }
 .pending-pub a { text-decoration: underline; }
+
+.pending-pub__selection-hint { font-size: .9rem; color: #596779; margin: .5rem 0; }
+.pending-pub__select-all { display: inline-flex; align-items: center; gap: .5rem; white-space: nowrap; cursor: pointer; }
+.pending-pub__select-all input { margin: 0; }
