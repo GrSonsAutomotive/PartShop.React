@@ -723,35 +723,100 @@ function AddItem() {
       return;
     }
 
+    let newId = null;
     try {
       setSubmitting(true);
 
-      const payload = buildPayload();
-      const res = await partsService.addPart(payload);
-      const newId = res?.item ?? res;
-
-      if (!newId) {
-        toastr.error("Insert succeeded but returned no Id.");
+      const policy = shippingPolicyOptions.find(
+        (item) => String(item.id) === String(formData.shippingPolicyId),
+      );
+      if (!policy) {
+        toastr.error("Select a valid shipping policy before submitting.");
         return;
       }
 
-      const rotatedFiles = await buildRotatedFilesForUpload(galleryItems);
+      const payload = buildPayload();
+      const res = await partsService.addPart(payload);
+      newId = res?.item ?? res;
 
+      if (!Number.isInteger(Number(newId)) || Number(newId) <= 0) {
+        toastr.error("Part insert returned an invalid ID. Check inventory before retrying.");
+        return;
+      }
+
+      // IMPORTANT: Gallery uploads happen after add-new. Publishing before
+      // completing the gallery exposes a part with missing photographs.
+      const rotatedFiles = await buildRotatedFilesForUpload(galleryItems);
       if (rotatedFiles.length > 0) {
         await partsService.addPartImages(newId, rotatedFiles);
       }
 
-      toastr.success("Part added successfully!");
+      // Contact-only policies are intentionally not published for checkout.
+      // The server validates the shipping class, Shopify collection membership,
+      // inventory, photos and final SQL availability on every publish request.
+      if (policy.allowsOnlineCheckout === true) {
+        if (Number(formData.quantity) < 1) {
+          toastr.warning(
+            "Part saved as Pending because quantity is zero. Add stock and publish from the part page.",
+          );
+        } else {
+          // One best-effort request: do not block inventory entry while Shopify publishes.
+          // The API alone promotes Pending to Available after confirming publication.
+          // If Shopify cannot confirm, the admin can use the Pending Publishing tool.
+          partsService.publishShopifyProduct(newId)
+            .then((response) => {
+              const result = response?.data?.item;
+              if (result?.publishedToOnlineStore === true &&
+                  String(result.status).toUpperCase() === "ACTIVE") {
+                toastr.success(`Part #${newId} published to Shopify.`);
+              } else {
+                console.warn("Shopify publication not confirmed", newId, result);
+                toastr.warning(
+                  `Publication not confirmed for part #${newId}. Check Pending Publishing.`,
+                  "Publication pending",
+                );
+              }
+            })
+            .catch((error) => {
+              console.warn("Automatic Shopify publication did not complete", newId, error);
+              toastr.warning(
+                `Publication not confirmed for part #${newId}. Check Pending Publishing.`,
+                "Publication pending",
+              );
+            });
+
+          toastr.success("Part saved and photos uploaded. Shopify publishing started.");
+        }
+      } else {
+        toastr.success(
+          policy.allowsOnlineCheckout === false
+            ? "Contact-only part saved. Checkout publishing is intentionally disabled."
+            : "Part saved. Confirm shipping policy configuration before publishing.",
+        );
+      }
+
       navigate(`/admin/part/${newId}`);
     } catch (err) {
-      console.error("Submission failed", err);
+      console.error("Add part workflow failed", err);
 
-      const apiErrors =
-        err?.response?.data?.errors ||
-        err?.response?.data?.Errors ||
-        (err?.response?.data?.message ? [err.response.data.message] : null);
-
-      toastr.error(apiErrors?.join(" | ") || "Failed to add part.");
+      // The SQL row can already exist even if a later image upload fails.
+      // Never encourage submitting a second duplicate inventory item.
+      if (newId) {
+        toastr.error(
+          "Part was created, but a later step failed. Review photos and " +
+            "publish from the existing part page instead of submitting again.",
+        );
+        navigate(`/admin/part/${newId}`);
+      } else {
+        const apiErrors =
+          err?.response?.data?.errors ||
+          err?.response?.data?.Errors ||
+          (err?.response?.data?.message ? [err.response.data.message] : null);
+        toastr.error(
+          (Array.isArray(apiErrors) ? apiErrors.join(" | ") : null) ||
+            "Failed to add part.",
+        );
+      }
     } finally {
       setSubmitting(false);
     }
