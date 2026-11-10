@@ -1,0 +1,25 @@
+name: Validate DEV parity frontend (BUILD ONLY)
+on:
+  push:
+    branches: [chore/dev-production-parity-20261110]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Confirm isolated DEV API URL
+        run: |
+          grep -q '^REACT_APP_API_HOST_PREFIX=https://site-2024-api-dev-' .env
+          ! grep -q 'REACT_APP_API_HOST_PREFIX=https://api.grsonsautomotive.com' .env
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Compile React (no Azure deployment)
+        env:
+          CI: 'false'
+        run: npm run build
