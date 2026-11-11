@@ -1,0 +1,25 @@
+name: Validate production Pending Publishing changes (TEST + BUILD ONLY)
+on:
+  push:
+    branches: [feature/prod-pending-select-all-20261110]
+permissions:
+  contents: read
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Test Pending Publishing batch behavior
+        env:
+          CI: 'true'
+        run: npm test -- --watchAll=false --runInBand --testPathPattern=PendingPublishingPanel.test.jsx
+      - name: Build production frontend (no deployment)
+        env:
+          CI: 'false'
+        run: npm run build
