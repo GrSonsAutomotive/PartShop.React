@@ -760,46 +760,32 @@ function AddItem() {
             "Part saved as Pending because quantity is zero. Add stock and publish from the part page.",
           );
         } else {
-          let published = false;
-          let publishError = null;
-
-          // Shopify collection membership can settle shortly after tag sync.
-          // Retry only the known membership-not-ready 409, never arbitrary errors.
-          for (let attempt = 0; attempt < 3 && !published; attempt++) {
-            try {
-              const response = await partsService.publishShopifyProduct(newId);
+          // One best-effort request: do not block inventory entry while Shopify publishes.
+          // The API alone promotes Pending to Available after confirming publication.
+          // If Shopify cannot confirm, the admin can use the Pending Publishing tool.
+          partsService.publishShopifyProduct(newId)
+            .then((response) => {
               const result = response?.data?.item;
-              if (!result?.publishedToOnlineStore ||
-                  String(result.status).toUpperCase() !== "ACTIVE") {
-                throw new Error("Shopify did not confirm ACTIVE Online Store publication.");
+              if (result?.publishedToOnlineStore === true &&
+                  String(result.status).toUpperCase() === "ACTIVE") {
+                toastr.success(`Part #${newId} published to Shopify.`);
+              } else {
+                console.warn("Shopify publication not confirmed", newId, result);
+                toastr.warning(
+                  `Publication not confirmed for part #${newId}. Check Pending Publishing.`,
+                  "Publication pending",
+                );
               }
-              published = true;
-            } catch (error) {
-              publishError = error;
-              const reason = String(
-                error?.response?.data?.message ||
-                  error?.response?.data?.errors?.join?.(" ") ||
-                  error?.message ||
-                  "",
+            })
+            .catch((error) => {
+              console.warn("Automatic Shopify publication did not complete", newId, error);
+              toastr.warning(
+                `Publication not confirmed for part #${newId}. Check Pending Publishing.`,
+                "Publication pending",
               );
-              const membershipNotReady =
-                error?.response?.status === 409 &&
-                /collection has not recognized/i.test(reason);
-              if (!membershipNotReady || attempt === 2) break;
-              await new Promise((resolve) => setTimeout(resolve, 2000 * (attempt + 1)));
-            }
-          }
+            });
 
-          if (published) {
-            toastr.success("Part added, photos uploaded, and published to Shopify!");
-          } else {
-            console.warn("Automatic Shopify publication needs attention", publishError);
-            toastr.warning(
-              "Part saved as Pending; automatic Shopify publishing did not complete. " +
-                "Open this part and use Publish to Shopify after reviewing its details.",
-              "Publication pending",
-            );
-          }
+          toastr.success("Part saved and photos uploaded. Shopify publishing started.");
         }
       } else {
         toastr.success(
