@@ -200,7 +200,7 @@ function InventoryCleanup() {
           <label htmlFor="ic-search">Search by name, part number or Part ID</label>
           <input id="ic-search" value={query} placeholder="Search unavailable parts"
             onChange={(event) => { setQuery(event.target.value); setPageIndex(0); }} />
-          <label htmlFor="ic-age">Last modified at least</label>
+          <label htmlFor="ic-age">Unavailable for at least</label>
           <select id="ic-age" value={olderThanDays}
             onChange={(event) => { setOlderThanDays(Number(event.target.value)); setPageIndex(0); }}>
             {THRESHOLDS.map((days) =>
@@ -222,7 +222,7 @@ function InventoryCleanup() {
                 aria-pressed={selectedId === row.id}>
                 <strong>{row.name}</strong>
                 <small>#{row.id} · {row.partNumber || "No part number"}</small>
-                <small>Modified {formatDate(row.lastModified)} · {row.daysSinceModified} days</small>
+                <small>Modified {formatDate(row.lastModified)} · Unavailable {row.daysUnavailable} days</small>
                 {row.shopifyLinked && <small className="ic-muted">Linked to Shopify</small>}
               </button>
             ))}
@@ -264,7 +264,8 @@ function InventoryCleanup() {
                 <div><dt>Part ID</dt><dd>{selectedId}</dd></div>
                 <div><dt>Part number</dt><dd>{part.partNumber || "—"}</dd></div>
                 <div><dt>Last modified</dt><dd>{formatDate(eligibility?.lastModified || part.dateModified || part.datemodified)}</dd></div>
-                <div><dt>Days since modified</dt><dd>{eligibility?.daysSinceModified ?? "—"}</dd></div>
+                <div><dt>Unavailable since</dt><dd>{formatDate(eligibility?.unavailableSince)}</dd></div>
+                <div><dt>Days unavailable</dt><dd>{eligibility?.daysUnavailable ?? "—"}</dd></div>
                 <div><dt>Stored photos</dt><dd>{images.length}</dd></div>
                 <div><dt>Quantity</dt><dd>{part.quantity ?? "—"}</dd></div>
                 <div><dt>Brand</dt><dd>{part.brand || "—"}</dd></div>
