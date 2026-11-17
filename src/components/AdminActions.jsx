@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./admin-actions.css";
 import PendingPublishingPanel from "./PendingPublishingPanel";
+import loginService from "../service/loginService";
 
 const AddPartIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -52,6 +53,12 @@ const CatalogIcon = () => (
   </svg>
 );
 
+const CleanupIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v6M14 11v6" />
+  </svg>
+);
+
 const ACTIONS = [
   {
     key: "add",
@@ -86,6 +93,14 @@ const ACTIONS = [
     icon: CatalogIcon,
   },
   {
+    key: "cleanup",
+    title: "Inventory Cleanup",
+    description: "Review old unavailable listings and safely remove eligible parts and photos.",
+    buttonText: "Review",
+    route: "/admin/inventory-cleanup",
+    icon: CleanupIcon,
+  },
+  {
     key: "locate",
     title: "Locate Part",
     description: "Search inventory and find the current warehouse location.",
@@ -105,6 +120,19 @@ const ACTIONS = [
 
 function AdminActions() {
   const navigate = useNavigate();
+  const [canCleanup, setCanCleanup] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    loginService.getCurrentUser().then((response) => {
+      if (!active) return;
+      const user = response?.item;
+      const role = String(user?.roleName || user?.role?.name || "")
+        .replace(/\s/g, "").toLowerCase();
+      setCanCleanup(role === "adminhigh");
+    }).catch(() => { if (active) setCanCleanup(false); });
+    return () => { active = false; };
+  }, []);
 
   return (
     <main className="admin-actions-page" aria-labelledby="admin-actions-title">
@@ -115,7 +143,7 @@ function AdminActions() {
       </header>
 
       <section className="action-container" aria-label="Admin actions">
-        {ACTIONS.map((action) => {
+        {ACTIONS.filter((action) => action.key !== "cleanup" || canCleanup).map((action) => {
           const Icon = action.icon;
 
           return (
