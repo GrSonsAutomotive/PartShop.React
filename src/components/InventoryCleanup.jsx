@@ -267,6 +267,12 @@ function InventoryCleanup() {
                 <div><dt>Unavailable since</dt><dd>{formatDate(eligibility?.unavailableSince)}</dd></div>
                 <div><dt>Days unavailable</dt><dd>{eligibility?.daysUnavailable ?? "—"}</dd></div>
                 <div><dt>Stored photos</dt><dd>{images.length}</dd></div>
+                {eligibility?.shopifyLinked && <>
+                  <div><dt>Shopify product ID</dt><dd>{eligibility.shopify?.shopifyProductId || part.shopifyProductId || "—"}</dd></div>
+                  <div><dt>Shopify product status</dt><dd>{eligibility.shopify?.shopifyProductStatus || "Not verified"}</dd></div>
+                  <div><dt>Verified Shopify store</dt><dd>{eligibility.shopify?.shopDomain || "Not authorized"}</dd></div>
+                  <div><dt>Cleanup operation</dt><dd>{eligibility.shopify?.operationState || "Not started"}</dd></div>
+                </>}
                 <div><dt>Quantity</dt><dd>{part.quantity ?? "—"}</dd></div>
                 <div><dt>Brand</dt><dd>{part.brand || "—"}</dd></div>
                 <div><dt>Location</dt><dd>{locationText || part.otherBox || "Not set"}</dd></div>
@@ -274,7 +280,9 @@ function InventoryCleanup() {
               {eligibility && (
                 <p className={eligibility.canDelete ? "ic-eligible" : "ic-warning"}>
                   {eligibility.canDelete
-                    ? "Eligible for permanent deletion (minimum 90 days)."
+                    ? (eligibility.shopifyLinked
+                        ? "Eligible for coordinated Shopify + SQL deletion. " + (eligibility.reason || "")
+                        : "Eligible for permanent deletion (minimum 90 days).")
                     : "Deletion unavailable: " + eligibility.reason}
                 </p>
               )}
@@ -297,6 +305,9 @@ function InventoryCleanup() {
             aria-labelledby="ic-modal-title" aria-describedby="ic-modal-description">
             <h2 id="ic-modal-title">Permanently delete part?</h2>
             <p id="ic-modal-description">This will delete <strong>{part.name}</strong> (Part ID {selectedId})
+              {eligibility?.shopifyLinked
+                ? " and its matching Shopify product from the verified store "
+                : ""}{eligibility?.shopifyLinked ? (eligibility?.shopify?.shopDomain || "") : ""}
               and queue its unshared uploaded photographs for removal. This cannot be undone.</p>
             <form onSubmit={confirmDelete}>
               <label htmlFor="ic-confirm-id">Type Part ID {selectedId} to confirm</label>
