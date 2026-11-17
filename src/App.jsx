@@ -21,6 +21,7 @@ import AdminDiscounts from "./components/AdminDiscounts";
 import CategoryLanding from "./components/CategoryLanding";
 import Policies from "./components/Policies";
 import AdminReferenceData from "./components/AdminReferenceData";
+import InventoryCleanup from "./components/InventoryCleanup";
 
 function App() {
   return (
@@ -46,6 +47,7 @@ function App() {
             <Route path="/admin/refunds" element={<AdminRefunds />} />
             <Route path="/admin/discounts" element={<AdminDiscounts />} />
             <Route path="/admin/catalog-setup" element={<AdminReferenceData />} />
+            <Route path="/admin/inventory-cleanup" element={<InventoryCleanup />} />
             <Route
               path="/returns/request"
               element={<CustomerReturnRequest />}
