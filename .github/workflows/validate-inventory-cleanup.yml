@@ -1,0 +1,25 @@
+name: Validate Inventory Cleanup Frontend (build only)
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/validate-inventory-cleanup.yml"
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Build React (no Azure deployment)
+        env:
+          CI: "false"
+        run: npm run build
